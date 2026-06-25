@@ -1,0 +1,10 @@
+streamlit==1.38.0
+shap==0.52.0
+lightgbm
+xgboost
+scikit-learn
+pandas
+numpy
+matplotlib
+joblib
+openpyxl
