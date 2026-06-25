@@ -1,5 +1,5 @@
-streamlit==1.38.0
-shap==0.52.0
+streamlit
+shap
 lightgbm
 xgboost
 scikit-learn
