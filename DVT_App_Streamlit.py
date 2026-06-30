@@ -54,7 +54,7 @@ explainer = get_explainer()
 tab1, tab2 = st.tabs(["📝 单例预测","📂 批量预测"])
 
 with tab1:
-    st.info("输入10项指标评估术后24h DVT风险")
+    st.info("输入10项指标评估术后DVT风险")
     with st.form("form"):
         inputs = {}
         n_cols = 3; cols = st.columns(n_cols)
