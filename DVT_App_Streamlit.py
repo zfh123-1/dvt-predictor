@@ -1,10 +1,9 @@
 """结直肠癌术后 DVT 风险预测系统 / CRC Postoperative DVT Risk Predictor
-模型：随机森林（Random Forest）｜ LASSO lambda.1se 筛选的 5 项围术期指标
+模型：XGBoost ｜ LASSO lambda.1se 筛选的 5 项围术期指标
 训练集 n=455 ｜ 验证集 n=195 ｜ 独立验证集 n=187
 支持中英文双语切换 / Bilingual (Chinese / English)
 """
 import streamlit as st
-import streamlit.components.v1 as components
 import joblib, numpy as np, pandas as pd
 import shap, matplotlib.pyplot as plt
 
@@ -13,15 +12,12 @@ st.set_page_config(page_title="CRC术后DVT风险预测 / DVT Risk Predictor",
                    page_icon="🏥", layout="wide")
 
 
-def st_shap(plot, height=170):
-    components.html(f"<head>{shap.getjs()}</head><body>{plot.html()}</body>",
-                    height=height, scrolling=True)
-
-
 @st.cache_resource
 def load():
+    from xgboost import XGBClassifier
     base = 'saved_models'
-    model = joblib.load(f'{base}/model.pkl')
+    model = XGBClassifier()
+    model.load_model(f'{base}/xgb_model.json')
     scaler = joblib.load(f'{base}/scaler.pkl')
     feats = list(joblib.load(f'{base}/feature_names.pkl'))
     return model, scaler, feats
@@ -32,8 +28,8 @@ model, scaler, FEATURES = load()
 TEXT = {
     'zh': {
         'title': "🏥 结直肠癌术后 DVT 风险预测系统",
-        'caption': "随机森林 ｜ LASSO (lambda.1se) 筛选的 5 项围术期指标 ｜ "
-                   "验证集 AUC 0.746 ｜ 独立验证集 AUC 0.790 ｜ "
+        'caption': "XGBoost ｜ LASSO (lambda.1se) 筛选的 5 项围术期指标 ｜ "
+                   "验证集 AUC 0.774 ｜ 独立验证集 AUC 0.776 ｜ "
                    "训练 n=455 · 验证 n=195 · 独立验证 n=187",
         'tab1': "📝 单例预测", 'tab2': "📂 批量预测",
         'info1': "输入 5 项指标，评估结直肠癌根治术后 14 天内下肢深静脉血栓（DVT）风险",
@@ -54,8 +50,8 @@ TEXT = {
         'hl': "🔴高风险", 'ml': "🟡中风险", 'll': "🟢低风险",
         'dl': "💾 下载结果", 'single': "🔍 单样本解释",
         'pick': "选择行号", 'exp_btn': "解释此样本",
-        'foot': "模型参数：随机森林，Optuna 50 轮贝叶斯优化，未使用过采样，阈值基于 Youden 指数。"
-                "本工具仅供临床研究参考，不作为独立诊疗依据。",
+        'foot': "模型参数：XGBoost，Optuna 40 轮贝叶斯优化，未使用过采样。"
+                "风险分级阈值 0.10 与 0.20，入院评估仅供临床研究参考，不作为独立诊疗依据。",
         'labels': {'D_dimer': 'D-二聚体（mg/L）', 'Age': '年龄（岁）',
                    'SII': '全身免疫炎症指数 SII', 'NLR': '中性粒细胞/淋巴细胞比值 NLR',
                    'Fib': '纤维蛋白原（g/L）'},
@@ -66,8 +62,8 @@ TEXT = {
     },
     'en': {
         'title': "🏥 CRC Postoperative DVT Risk Predictor",
-        'caption': "Random Forest ｜ 5 perioperative variables selected by LASSO (lambda.1se) ｜ "
-                   "Validation AUC 0.746 ｜ Independent AUC 0.790 ｜ "
+        'caption': "XGBoost ｜ 5 perioperative variables selected by LASSO (lambda.1se) ｜ "
+                   "Validation AUC 0.774 ｜ Independent validation AUC 0.776 ｜ "
                    "Training n=455 · Validation n=195 · Independent n=187",
         'tab1': "📝 Single-case prediction", 'tab2': "📂 Batch prediction",
         'info1': "Enter 5 variables to estimate the risk of lower-extremity deep vein thrombosis "
@@ -90,8 +86,8 @@ TEXT = {
         'hl': "🔴 High", 'ml': "🟡 Intermediate", 'll': "🟢 Low",
         'dl': "💾 Download results", 'single': "🔍 Single-sample explanation",
         'pick': "Select row", 'exp_btn': "Explain this sample",
-        'foot': "Model: Random Forest, Optuna Bayesian optimisation (50 trials), "
-                "no oversampling applied, cut-off based on the Youden index. "
+        'foot': "Model: XGBoost, Optuna Bayesian optimisation (40 trials), no oversampling applied. "
+                "Risk categories use cut-offs of 0.10 and 0.20. "
                 "This tool is intended for clinical research reference only and "
                 "must not be used as a standalone basis for diagnosis or treatment.",
         'labels': {'D_dimer': 'D-dimer (mg/L)', 'Age': 'Age (years)',
@@ -105,7 +101,7 @@ TEXT = {
     },
 }
 DEFAULTS = {'D_dimer': 0.85, 'Age': 64.0, 'SII': 728.0, 'NLR': 2.75, 'Fib': 3.24}
-THR_HIGH, THR_MID = 0.250, 0.100
+THR_HIGH, THR_MID = 0.200, 0.100
 
 lang = st.sidebar.radio("语言 / Language", ["中文", "English"], index=0)
 L = 'zh' if lang == "中文" else 'en'
@@ -169,11 +165,6 @@ with tab1:
                     shap.plots.waterfall(exp, max_display=len(FEATURES), show=False)
                     plt.title('SHAP Waterfall', fontweight='bold')
                     st.pyplot(fig, bbox_inches='tight'); plt.close(fig)
-                    st.markdown(T['force'])
-                    fh = shap.plots.force(float(bv), np.round(vals, 3),
-                                          np.round(x.iloc[0].values, 3),
-                                          feature_names=FEATURES, matplotlib=False)
-                    st_shap(fh)
                 except Exception as e:
                     st.warning(f"SHAP error: {e}")
 
